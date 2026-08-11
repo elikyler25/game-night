@@ -255,9 +255,19 @@ tr:hover .rowbtn,.rowbtn:focus-visible{opacity:1}
 /* who they picked at the character select, so you can call the match without
    asking twice */
 .slot .chars{
+  display:flex;align-items:center;gap:5px;
   font:500 11px/1.3 var(--hud);letter-spacing:.02em;color:var(--dim);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  overflow:hidden;white-space:nowrap;
 }
+/* a hand-drawn coin per fighter — colour reads across the room, the word
+   underneath settles the argument */
+.coin{
+  flex:none;display:inline-block;min-width:17px;height:17px;padding:0 3px;
+  border-radius:5px;background:var(--c);
+  font:800 9.5px/17px var(--hud);letter-spacing:.02em;text-align:center;
+  color:oklch(0.16 0.02 264);
+}
+.slot.lost .coin{filter:saturate(.35) brightness(.8)}
 .slot .tick{
   flex:none;width:19px;height:19px;border-radius:50%;
   border:1.5px solid var(--line-hi);
@@ -697,6 +707,69 @@ const SEP = " · ";
 const personOf = entry => { const i = entry.indexOf(SEP); return i < 0 ? entry : entry.slice(0, i); };
 const fighterOf = entry => { const i = entry.indexOf(SEP); return i < 0 ? "" : entry.slice(i + SEP.length); };
 
+/* A coin per fighter: their signature colour and their initials. Drawn here,
+ * not borrowed — the real portraits belong to Nintendo, and this whole night
+ * runs on files we own. Colour carries it across a room; the word underneath
+ * settles any argument. Anything typed that isn't on the list still gets a
+ * coin, in a colour worked out from the letters, so it is the same colour
+ * every time. */
+const FIGHTER_COLOURS = {
+  mario:"0.62 0.20 28", luigi:"0.68 0.16 148", peach:"0.80 0.13 355", daisy:"0.80 0.15 75",
+  rosalina:"0.78 0.06 250", bowser:"0.70 0.16 92", bowserjr:"0.72 0.15 85",
+  donkeykong:"0.58 0.09 58", diddykong:"0.66 0.16 35", kingkrool:"0.70 0.14 95",
+  link:"0.68 0.13 145", toonlink:"0.74 0.13 145", younglink:"0.74 0.13 145",
+  zelda:"0.82 0.07 330", sheik:"0.68 0.06 250", ganondorf:"0.50 0.07 150",
+  samus:"0.70 0.17 45", darksamus:"0.55 0.14 300", zerosuitsamus:"0.64 0.13 232",
+  yoshi:"0.75 0.15 140", kirby:"0.80 0.12 350", metaknight:"0.55 0.13 265",
+  kingdedede:"0.60 0.12 255", fox:"0.72 0.14 60", falco:"0.60 0.15 250", wolf:"0.58 0.10 285",
+  pikachu:"0.86 0.16 100", pichu:"0.88 0.14 100", jigglypuff:"0.85 0.10 350",
+  mewtwo:"0.65 0.12 300", lucario:"0.62 0.11 245", greninja:"0.60 0.13 230",
+  incineroar:"0.60 0.16 35", pokemontrainer:"0.60 0.17 25",
+  ness:"0.72 0.17 70", lucas:"0.74 0.15 68", captainfalcon:"0.62 0.18 240",
+  marth:"0.65 0.14 265", lucina:"0.68 0.12 270", roy:"0.60 0.18 30", chrom:"0.60 0.14 255",
+  ike:"0.58 0.12 255", robin:"0.60 0.10 280", corrin:"0.75 0.06 300", byleth:"0.60 0.10 250",
+  gameandwatch:"0.35 0.01 264", rob:"0.72 0.04 264", iceclimbers:"0.78 0.08 220",
+  olimar:"0.80 0.12 90", villager:"0.78 0.12 130", isabelle:"0.85 0.14 90",
+  wiifittrainer:"0.80 0.04 200", littlemac:"0.72 0.15 40", shulk:"0.65 0.13 200",
+  duckhunt:"0.70 0.09 60", pit:"0.85 0.05 90", darkpit:"0.45 0.03 280",
+  palutena:"0.78 0.10 170", wario:"0.85 0.17 95", snake:"0.60 0.06 150",
+  sonic:"0.55 0.17 255", megaman:"0.62 0.14 245", pacman:"0.86 0.16 95",
+  ryu:"0.70 0.16 30", ken:"0.62 0.18 25", cloud:"0.70 0.09 200", sephiroth:"0.80 0.02 264",
+  bayonetta:"0.48 0.10 300", joker:"0.60 0.20 25", hero:"0.65 0.15 250",
+  banjokazooie:"0.68 0.11 70", terry:"0.65 0.17 25", minmin:"0.75 0.16 60",
+  steve:"0.60 0.10 200", sora:"0.66 0.14 250", kazuya:"0.55 0.12 300",
+  pyra:"0.60 0.19 25", mythra:"0.86 0.13 95", ridley:"0.55 0.16 320",
+  simon:"0.58 0.09 60", richter:"0.66 0.09 250", inkling:"0.75 0.20 320",
+  piranhaplant:"0.65 0.15 145", mii:"0.70 0.05 264", random:"0.70 0.03 264",
+};
+const FIGHTER_ALIASES = {
+  dk:"donkeykong", zss:"zerosuitsamus", gnw:"gameandwatch", mrgameandwatch:"gameandwatch",
+  ganon:"ganondorf", puff:"jigglypuff", falcon:"captainfalcon", cpfalcon:"captainfalcon",
+  banjo:"banjokazooie", dedede:"kingdedede", krool:"kingkrool", ptrainer:"pokemontrainer",
+  wft:"wiifittrainer", plant:"piranhaplant", icies:"iceclimbers", mac:"littlemac",
+};
+const fighterKey = s => {
+  const k = (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return FIGHTER_ALIASES[k] || k;
+};
+/** Initials: the capitals if there are any, otherwise the first two letters. */
+function fighterTag(name){
+  const words = (name || "").trim().split(/[\s.&-]+/).filter(Boolean);
+  if (words.length > 1) return words.slice(0, 2).map(w => w[0].toUpperCase()).join("");
+  return (words[0] || "?").slice(0, 2).toUpperCase();
+}
+/** Same letters, same colour, every time. */
+function fighterColour(name){
+  const key = fighterKey(name);
+  if (FIGHTER_COLOURS[key]) return "oklch(" + FIGHTER_COLOURS[key] + ")";
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % 360;
+  return "oklch(0.72 0.13 " + h + ")";
+}
+function fighterCoin(name){
+  return el("span", { class:"coin", style:"--c:" + fighterColour(name), "aria-hidden":"true" }, fighterTag(name));
+}
+
 function entrantsFor(people, t){
   const inGame = people.filter(p => p.games.some(g => g.toLowerCase() === t.name.toLowerCase()));
   if (t.name !== "Super Smash Bros") return inGame.map(p => p.name);
@@ -884,7 +957,11 @@ function renderEveryone(view){
       const t = tourn(g);
       return el("span", { class:"gchip", style:"--c:" + (t ? t.c : "var(--dim)") }, t ? t.short : g);
     }))),
-    el("td", { class:"mono" }, p.fighters.join(" / ") || "—"),
+    el("td", { class:"mono" }, p.fighters.length
+      ? el("span", { style:"display:flex;gap:11px;flex-wrap:wrap" },
+          p.fighters.map(f => el("span", { style:"display:inline-flex;align-items:center;gap:5px" },
+            fighterCoin(f), f)))
+      : "—"),
     el("td", { style:"width:1%" }, el("button", {
       class:"btn ghost sm rowbtn",
       onclick: () => { if (confirm("Take " + p.name + " out of the night?")){ S.people = S.people.filter(x => x !== p); save(); render(); } }
@@ -1005,8 +1082,10 @@ function renderNotDrawn(view, t, roster){
       ? "Pairs top of the list against bottom, so byes always face a real player. The same draw comes back every time unless you ask for a new one."
       : "Splits into heats no bigger than " + t.cap + ", as even as possible — five players is 3 and 2, never 4 and 1."),
     el("div", { class:"picks", style:"margin:0 0 16px" },
-      roster.map(n => el("span", { class:"gchip", style:"--c:" + t.c },
-        fighterOf(n) ? personOf(n) + " as " + fighterOf(n) : n))),
+      roster.map(n => fighterOf(n)
+        ? el("span", { class:"gchip", style:"--c:" + t.c + ";display:inline-flex;align-items:center;gap:6px" },
+            fighterCoin(fighterOf(n)), personOf(n) + " as " + fighterOf(n))
+        : el("span", { class:"gchip", style:"--c:" + t.c }, n))),
     el("button", { class:"btn primary", onclick: () => draw(t) },
       t.mode === "bracket" ? "Draw the bracket" : "Draw the heats")));
 }
@@ -1111,7 +1190,9 @@ function renderBracket(view, t){
           el("span", { class:"seed" }, r === 0 ? String(side === 0 ? k + 1 : g.slots.length - k) : ""),
           el("span", { class:"who" },
             el("span", { class:"nm" }, who ? personOf(who) : "waiting"),
-            who && fighterOf(who) ? el("span", { class:"chars" }, fighterOf(who)) : null),
+            who && fighterOf(who)
+              ? el("span", { class:"chars" }, fighterCoin(fighterOf(who)), fighterOf(who))
+              : null),
           el("span", { class:"tick" })));
       });
       if (stored) m.appendChild(el("button", {
@@ -1129,7 +1210,9 @@ function championCard(entry, what){
   return el("div", { class:"champ" },
     el("div", { class:"cup" }, "★"),
     el("div", { class:"txt" },
-      el("span", null, what + " champion" + (fighter ? " · as " + fighter : "")),
+      el("span", { style:"display:flex;align-items:center;gap:6px" },
+        fighter ? fighterCoin(fighter) : null,
+        what + " champion" + (fighter ? " · as " + fighter : "")),
       el("b", null, personOf(entry))));
 }
 
@@ -1418,6 +1501,19 @@ function runChecks(){
     ["Ava · Fox","Ava · Kirby","Bo · Link","Cy"]);
   ok("a bye pairing is left alone",
     separateTwins(["Ava · Kirby","Ava · Fox", BYE, BYE]).filter(s => s === BYE).length === 2);
+
+  // the fighter coins
+  same("a known fighter keeps its own colour", fighterColour("Kirby"), "oklch(0.80 0.12 350)");
+  same("spelling it loosely still finds it", fighterColour("king k. rool"), fighterColour("KingKRool"));
+  same("a nickname finds the real one", fighterColour("DK"), fighterColour("Donkey Kong"));
+  same("two words give two initials", fighterTag("Captain Falcon"), "CF");
+  same("one word gives two letters", fighterTag("Kirby"), "KI");
+  same("punctuation doesn't break the initials", fighterTag("Mr. Game & Watch"), "MG");
+  same("an unknown fighter still gets a colour twice the same",
+    fighterColour("Waluigi"), fighterColour("waluigi"));
+  ok("an unknown fighter's colour is a real colour", /^oklch\([\d.]+ [\d.]+ \d+\)$/.test(fighterColour("Waluigi")));
+  ok("two different unknowns don't collide", fighterColour("Waluigi") !== fighterColour("Goku"));
+  same("an empty fighter is handled", fighterTag(""), "?");
 
   // the same draw twice
   same("the same seed draws the same order",
