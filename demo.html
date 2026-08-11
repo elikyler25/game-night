@@ -60,6 +60,7 @@ body{
   font-family:var(--font); font-size:15px; line-height:1.5;
   -webkit-font-smoothing:antialiased;
   min-height:100svh;
+  overflow-x:hidden;   /* the bracket does its own sideways scrolling */
 }
 button{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
@@ -192,9 +193,16 @@ td.mono{font-family:var(--hud);font-size:12.5px;color:var(--dim)}
 tr:hover .rowbtn,.rowbtn:focus-visible{opacity:1}
 
 /* ---------------- bracket ---------------- */
+/* The bracket steps outside the reading column and uses the whole window —
+   a 16-player draw is wider than a page of text, and a final sliced in half
+   at the right-hand edge looks broken even when it scrolls. */
 .bracket{
   --gap:clamp(20px,2.6vw,34px);
-  display:flex;gap:var(--gap);overflow-x:auto;padding:4px 2px 14px;align-items:stretch;
+  display:flex;gap:var(--gap);overflow-x:auto;align-items:stretch;
+  margin-inline:calc(50% - 50vw);
+  /* starts level with the heading above it, then keeps going past the column */
+  padding:4px max(clamp(14px,3vw,26px), calc((100vw - 1180px) / 2 + 26px)) 16px;
+  scrollbar-width:thin;
 }
 .round{flex:none;width:min(268px,74vw);display:flex;flex-direction:column}
 .round > h3{
