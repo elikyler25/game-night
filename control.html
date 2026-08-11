@@ -250,21 +250,29 @@ tr:hover .rowbtn,.rowbtn:focus-visible{opacity:1}
 .slot .seed{
   flex:none;width:20px;font:600 11px/1 var(--hud);color:var(--dim);
 }
-.slot .who{flex:1;font-size:14px;font-weight:600;letter-spacing:-.01em}
+.slot .who{flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
+.slot .nm{font-size:14px;font-weight:600;letter-spacing:-.01em}
+/* who they picked at the character select, so you can call the match without
+   asking twice */
+.slot .chars{
+  font:500 11px/1.3 var(--hud);letter-spacing:.02em;color:var(--dim);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
 .slot .tick{
   flex:none;width:19px;height:19px;border-radius:50%;
   border:1.5px solid var(--line-hi);
 }
 .slot.won{background:color-mix(in oklch, var(--game) 15%, transparent)}
-.slot.won .who{color:var(--ink)}
+.slot.won .nm{color:var(--ink)}
 .slot.won .tick{background:var(--game);border-color:var(--game);position:relative}
 .slot.won .tick::after{
   content:"";position:absolute;inset:0;
   background:var(--on-accent);
   clip-path:polygon(20% 52%,42% 72%,80% 28%,88% 38%,42% 88%,12% 60%);
 }
-.slot.lost .who{color:var(--dim);text-decoration:line-through;text-decoration-color:oklch(0.5 0.02 264)}
-.slot.bye .who,.slot.tbd .who{color:oklch(0.58 0.02 264);font-weight:500;font-style:italic}
+.slot.lost .nm{color:var(--dim);text-decoration:line-through;text-decoration-color:oklch(0.5 0.02 264)}
+.slot.lost .chars{color:oklch(0.56 0.015 264)}
+.slot.bye .nm,.slot.tbd .nm{color:oklch(0.58 0.02 264);font-weight:500;font-style:italic}
 .match .undo{
   position:absolute;top:8px;right:42px;padding:2px 7px;border-radius:6px;
   border:1px solid var(--line-hi);background:var(--field);
@@ -681,6 +689,46 @@ function rosterFor(people, game){
   return people.filter(p => p.games.some(g => g.toLowerCase() === game.toLowerCase())).map(p => p.name);
 }
 
+/* Smash is entered by character, not by person: putting two fighters down buys
+ * you two runs at the bracket, one as each. Everywhere else one person is one
+ * entry. An entry is written "Name · Fighter" so the person is always
+ * recoverable from it. */
+const SEP = " · ";
+const personOf = entry => { const i = entry.indexOf(SEP); return i < 0 ? entry : entry.slice(0, i); };
+const fighterOf = entry => { const i = entry.indexOf(SEP); return i < 0 ? "" : entry.slice(i + SEP.length); };
+
+function entrantsFor(people, t){
+  const inGame = people.filter(p => p.games.some(g => g.toLowerCase() === t.name.toLowerCase()));
+  if (t.name !== "Super Smash Bros") return inGame.map(p => p.name);
+  const out = [];
+  inGame.forEach(p => {
+    if (p.fighters.length) p.fighters.forEach(f => out.push(p.name + SEP + f));
+    else out.push(p.name);
+  });
+  return out;
+}
+
+/* Somebody's two characters should not meet in the first round — that is a
+ * match nobody plays. Swap one of them with an entry from another pairing,
+ * as long as the swap doesn't just move the problem. */
+function separateTwins(slots){
+  const size = slots.length;
+  const pairOf = i => Math.min(i, size - 1 - i);
+  for (let i = 0; i < size / 2; i++){
+    const a = slots[i], b = slots[size - 1 - i];
+    if (a === BYE || b === BYE || personOf(a) !== personOf(b)) continue;
+    for (let j = 0; j < size; j++){
+      if (pairOf(j) === i) continue;
+      const cand = slots[j], partner = slots[size - 1 - j];
+      if (cand === BYE || personOf(cand) === personOf(a)) continue;
+      if (partner !== BYE && personOf(partner) === personOf(b)) continue;
+      slots[size - 1 - i] = cand; slots[j] = b;
+      break;
+    }
+  }
+  return slots;
+}
+
 /** A published-sheet link, a sharing link, or a plain URL all end up as
  *  something that returns comma-separated text. */
 function csvUrlFrom(raw){
@@ -757,10 +805,10 @@ function gameStatus(t){
   if (!g.drawn) return roster.length ? roster.length + " signed up" : "nobody yet";
   if (t.mode === "bracket"){
     const champ = bracketChampion(g.slots, g.results);
-    return champ ? "won by " + champ : "in progress";
+    return champ ? "won by " + personOf(champ) : "in progress";
   }
-  if (g.final && g.final.order && g.final.order.length === g.final.players.length) return "won by " + g.final.order[0];
-  if (g.heats.length === 1 && allHeatsScored(g.heats, g.orders)) return "won by " + g.orders[0][0];
+  if (g.final && g.final.order && g.final.order.length === g.final.players.length) return "won by " + personOf(g.final.order[0]);
+  if (g.heats.length === 1 && allHeatsScored(g.heats, g.orders)) return "won by " + personOf(g.orders[0][0]);
   return allHeatsScored(g.heats, g.orders) ? "final to play" : "in progress";
 }
 
@@ -912,13 +960,15 @@ function renderEmpty(view){
 
 function renderGame(view, t){
   const g = S.games[t.name];
-  const roster = rosterFor(S.people, t.name);
+  const roster = entrantsFor(S.people, t);
+  const heads = rosterFor(S.people, t.name).length;
+  const extra = roster.length !== heads ? " " + roster.length + " entries, because two characters is two runs at it." : "";
 
   const head = el("div", { class:"head" },
     el("h1", null, el("em", null, t.short)),
     el("p", { class:"sub" }, t.mode === "bracket"
-      ? "Knockout. " + roster.length + " signed up. Tap whoever wins."
-      : "Heats of " + t.cap + ", then a final. " + roster.length + " signed up."),
+      ? "Knockout. " + heads + " signed up." + extra + " Tap whoever wins."
+      : "Heats of " + t.cap + ", then a final. " + heads + " signed up."),
     el("div", { class:"spacer" },
       g.drawn ? el("button", { class:"btn ghost", onclick: () => redraw(t) }, "Draw again") : null,
       g.drawn ? el("button", { class:"btn ghost danger", onclick: () => resetGame(t) }, "Clear this game") : null)
@@ -955,15 +1005,16 @@ function renderNotDrawn(view, t, roster){
       ? "Pairs top of the list against bottom, so byes always face a real player. The same draw comes back every time unless you ask for a new one."
       : "Splits into heats no bigger than " + t.cap + ", as even as possible — five players is 3 and 2, never 4 and 1."),
     el("div", { class:"picks", style:"margin:0 0 16px" },
-      roster.map(n => el("span", { class:"gchip", style:"--c:" + t.c }, n))),
+      roster.map(n => el("span", { class:"gchip", style:"--c:" + t.c },
+        fighterOf(n) ? personOf(n) + " as " + fighterOf(n) : n))),
     el("button", { class:"btn primary", onclick: () => draw(t) },
       t.mode === "bracket" ? "Draw the bracket" : "Draw the heats")));
 }
 
 function draw(t){
   const g = S.games[t.name];
-  const roster = seededShuffle(rosterFor(S.people, t.name), g.seed);
-  if (t.mode === "bracket") g.slots = buildSlots(roster);
+  const roster = seededShuffle(entrantsFor(S.people, t), g.seed);
+  if (t.mode === "bracket") g.slots = separateTwins(buildSlots(roster));
   else g.heats = splitHeats(roster, t.cap);
   g.results = {}; g.orders = {}; g.final = null; g.drawn = true;
   save(); render();
@@ -1009,10 +1060,11 @@ function lateNote(t, late){
   } else {
     acts.appendChild(el("button", { class:"btn sm primary", onclick: () => redraw(t) }, "Redraw with them"));
   }
+  const who = [...new Set(late.map(personOf))];
   return el("div", { class:"note" },
     el("span", { class:"bang" }, "+"),
-    el("div", null, el("b", null, late.length === 1 ? "1 new sign-up " : late.length + " new sign-ups "),
-      "since you drew: " + late.join(", ") + "."),
+    el("div", null, el("b", null, who.length === 1 ? "1 new sign-up " : who.length + " new sign-ups "),
+      "since you drew: " + who.join(", ") + "."),
     acts);
 }
 
@@ -1057,7 +1109,9 @@ function renderBracket(view, t){
           }
         },
           el("span", { class:"seed" }, r === 0 ? String(side === 0 ? k + 1 : g.slots.length - k) : ""),
-          el("span", { class:"who" }, who || "waiting"),
+          el("span", { class:"who" },
+            el("span", { class:"nm" }, who ? personOf(who) : "waiting"),
+            who && fighterOf(who) ? el("span", { class:"chars" }, fighterOf(who)) : null),
           el("span", { class:"tick" })));
       });
       if (stored) m.appendChild(el("button", {
@@ -1070,10 +1124,13 @@ function renderBracket(view, t){
   view.appendChild(wrap);
 }
 
-function championCard(name, what){
+function championCard(entry, what){
+  const fighter = fighterOf(entry);
   return el("div", { class:"champ" },
     el("div", { class:"cup" }, "★"),
-    el("div", { class:"txt" }, el("span", null, what + " champion"), el("b", null, name)));
+    el("div", { class:"txt" },
+      el("span", null, what + " champion" + (fighter ? " · as " + fighter : "")),
+      el("b", null, personOf(entry))));
 }
 
 /* ---------------- heats ---------------- */
@@ -1342,6 +1399,26 @@ function runChecks(){
     csvUrlFrom("https://docs.google.com/spreadsheets/d/ABC123/edit#gid=0"),
     "https://docs.google.com/spreadsheets/d/ABC123/gviz/tq?tqx=out:csv");
 
+  // two characters, two entries
+  const smash = TOURNAMENTS[0], kart = TOURNAMENTS[2];
+  const two = [{ name:"Ava", games:["Super Smash Bros","Mario Kart"], fighters:["Kirby","Fox"] },
+               { name:"Bo",  games:["Super Smash Bros"],              fighters:["Link"] },
+               { name:"Cy",  games:["Super Smash Bros","Mario Kart"], fighters:[] }];
+  same("two fighters buys two entries", entrantsFor(two, smash),
+    ["Ava · Kirby","Ava · Fox","Bo · Link","Cy"]);
+  same("no fighter still gets you in", entrantsFor(two, smash).filter(e => e === "Cy").length, 1);
+  same("other games are one entry each", entrantsFor(two, kart), ["Ava","Cy"]);
+  same("the person is recoverable from an entry", personOf("Ava · Kirby"), "Ava");
+  same("so is the character", fighterOf("Ava · Kirby"), "Kirby");
+  same("a plain name has no character", fighterOf("Cy"), "");
+  const twinned = separateTwins(["Ava · Kirby","Bo · Link","Cy","Ava · Fox"]);
+  ok("your two characters don't meet in round one",
+    firstRound(twinned).every(p => p[0] === BYE || p[1] === BYE || personOf(p[0]) !== personOf(p[1])));
+  same("separating them keeps everyone in", twinned.slice().sort(),
+    ["Ava · Fox","Ava · Kirby","Bo · Link","Cy"]);
+  ok("a bye pairing is left alone",
+    separateTwins(["Ava · Kirby","Ava · Fox", BYE, BYE]).filter(s => s === BYE).length === 2);
+
   // the same draw twice
   same("the same seed draws the same order",
     seededShuffle(["a","b","c","d","e"], 22), seededShuffle(["a","b","c","d","e"], 22));
@@ -1410,8 +1487,8 @@ function seedDemo(){
   // the standings and the points table have something real in them
   TOURNAMENTS.forEach(t => {
     const g = S.games[t.name];
-    const field = seededShuffle(rosterFor(S.people, t.name), g.seed);
-    if (t.mode === "bracket") g.slots = buildSlots(field);
+    const field = seededShuffle(entrantsFor(S.people, t), g.seed);
+    if (t.mode === "bracket") g.slots = separateTwins(buildSlots(field));
     else g.heats = splitHeats(field, t.cap);
     g.drawn = true;
   });
