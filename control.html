@@ -192,7 +192,10 @@ td.mono{font-family:var(--hud);font-size:12.5px;color:var(--dim)}
 tr:hover .rowbtn,.rowbtn:focus-visible{opacity:1}
 
 /* ---------------- bracket ---------------- */
-.bracket{display:flex;gap:clamp(14px,2.2vw,26px);overflow-x:auto;padding:4px 2px 14px;align-items:stretch}
+.bracket{
+  --gap:clamp(20px,2.6vw,34px);
+  display:flex;gap:var(--gap);overflow-x:auto;padding:4px 2px 14px;align-items:stretch;
+}
 .round{flex:none;width:min(268px,74vw);display:flex;flex-direction:column}
 .round > h3{
   margin:0 0 10px;font:600 11px/1 var(--hud);letter-spacing:.11em;
@@ -200,10 +203,32 @@ tr:hover .rowbtn,.rowbtn:focus-visible{opacity:1}
 }
 /* Later rounds space themselves out so each match sits level with the two
    it feeds from — what turns a list of pairs into a bracket you can read. */
-.round > .col{flex:1;display:flex;flex-direction:column;gap:10px;justify-content:space-around}
+.round > .col{flex:1;display:flex;flex-direction:column;justify-content:space-around}
+/* Two matches that feed the same next one are wrapped together, which is what
+   lets the joining line know where to start and stop: with space-around the
+   two centres land at exactly a quarter and three quarters of the wrapper. */
+.pair{flex:1;display:flex;flex-direction:column;justify-content:space-around;position:relative}
+.round > .col > .match,.pair > .match{margin:5px 0}
+
 .match{
   background:var(--panel);border:1px solid var(--line);border-radius:12px;
-  overflow:hidden;position:relative;
+  position:relative;
+}
+.match > .slot:first-child{border-radius:11px 11px 0 0}
+.match > .slot:last-child{border-radius:0 0 11px 11px}
+
+/* the classic elbows: a stub out of each match, one upright joining the pair,
+   a stub into the match they feed */
+.round:not(:last-child) .match::after,
+.round:not(:first-child) .match::before{
+  content:"";position:absolute;top:50%;
+  width:calc(var(--gap) / 2);height:1px;background:var(--line-hi);
+}
+.round:not(:last-child) .match::after{right:calc(var(--gap) / -2)}
+.round:not(:first-child) .match::before{left:calc(var(--gap) / -2)}
+.round:not(:last-child) .pair::after{
+  content:"";position:absolute;top:25%;height:50%;
+  right:calc(var(--gap) / -2);width:1px;background:var(--line-hi);
 }
 .match.live{border-color:color-mix(in oklch, var(--game) 55%, var(--line))}
 .slot{
@@ -995,6 +1020,15 @@ function renderBracket(view, t){
   rounds.forEach((round, r) => {
     const inner = el("div", { class:"col" });
     const col = el("div", { class:"round" }, el("h3", null, roundName(r, rounds.length)), inner);
+    // Matches that feed the same next match share a wrapper, so the joining
+    // line has two known ends. The last round feeds nothing, so it has none.
+    const last = r === rounds.length - 1;
+    const wrappers = [];
+    if (!last) for (let i = 0; i < round.length; i += 2){
+      const w = el("div", { class:"pair" });
+      wrappers.push(w); inner.appendChild(w);
+    }
+    const slotFor = k => last ? inner : wrappers[Math.floor(k / 2)];
     round.forEach((pair, k) => {
       const stored = g.results[r + "-" + k];
       const won = matchWinner(pair, stored);
@@ -1021,7 +1055,7 @@ function renderBracket(view, t){
       if (stored) m.appendChild(el("button", {
         class:"undo", onclick: () => { delete g.results[r + "-" + k]; save(); render(); }
       }, "undo"));
-      inner.appendChild(m);
+      slotFor(k).appendChild(m);
     });
     wrap.appendChild(col);
   });
