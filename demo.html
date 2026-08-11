@@ -267,7 +267,12 @@ tr:hover .rowbtn,.rowbtn:focus-visible{opacity:1}
   font:800 9.5px/17px var(--hud);letter-spacing:.02em;text-align:center;
   color:oklch(0.16 0.02 264);
 }
-.slot.lost .coin{filter:saturate(.35) brightness(.8)}
+.coinwrap{flex:none;display:inline-flex;align-items:center}
+.icon{
+  width:19px;height:19px;border-radius:5px;object-fit:cover;display:block;
+  background:var(--raised);
+}
+.slot.lost .coin,.slot.lost .icon{filter:saturate(.35) brightness(.8)}
 .slot .tick{
   flex:none;width:19px;height:19px;border-radius:50%;
   border:1.5px solid var(--line-hi);
@@ -766,8 +771,31 @@ function fighterColour(name){
   for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % 360;
   return "oklch(0.72 0.13 " + h + ")";
 }
+/* If a picture for this fighter is sitting in the icons folder beside this
+ * page, it is used instead of the coin. Nothing is downloaded from anywhere —
+ * the page only ever looks in that one folder, and quietly keeps the coin when
+ * there is nothing there. Which pictures go in it is your call, not mine. */
+const ICON_DIR = "icons/";
+const ICON_EXTS = [".png", ".webp", ".jpg"];
+const iconCache = {};   // key -> found src, or "" once every extension has failed
+
+function findIcon(key, i, onfound){
+  if (iconCache[key] !== undefined){ if (iconCache[key]) onfound(iconCache[key]); return; }
+  if (i >= ICON_EXTS.length){ iconCache[key] = ""; return; }
+  const probe = new Image();
+  probe.onload = () => { iconCache[key] = probe.src; onfound(probe.src); };
+  probe.onerror = () => findIcon(key, i + 1, onfound);
+  probe.src = ICON_DIR + key + ICON_EXTS[i];
+}
+
 function fighterCoin(name){
-  return el("span", { class:"coin", style:"--c:" + fighterColour(name), "aria-hidden":"true" }, fighterTag(name));
+  const coin = el("span", { class:"coin", style:"--c:" + fighterColour(name), "aria-hidden":"true" }, fighterTag(name));
+  const wrap = el("span", { class:"coinwrap" }, coin);
+  findIcon(fighterKey(name), 0, src => {
+    wrap.textContent = "";
+    wrap.appendChild(el("img", { class:"icon", src, alt:"", title:name }));
+  });
+  return wrap;
 }
 
 function entrantsFor(people, t){
