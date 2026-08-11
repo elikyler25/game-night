@@ -415,7 +415,9 @@ const TOURNAMENTS = [
 ];
 const HEAT_POINTS = [10, 7, 5, 3, 2, 1];
 const BYE = "— bye —";
-const KEY = "gamenight-control-room-v1";
+const DEMO = location.hash === "#demo";
+/* The demo keeps its own drawer, so a play-around never touches the real night. */
+const KEY = DEMO ? "gamenight-control-room-demo" : "gamenight-control-room-v1";
 const POLL_MS = 45000;
 
 /* ------------------------------------------------------------------ *
@@ -1315,8 +1317,91 @@ function runChecks(){
 
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ *
+ * the demo — a full night of made-up people, so the thing can be tried
+ * before a single real person has signed up
+ * ------------------------------------------------------------------ */
+
+const DEMO_PEOPLE = [
+  ["Micah Alvarez",   "SBKUF", "Kirby",     "Fox"],
+  ["Ava Whitmore",    "SKU",   "Sephiroth", "Link"],
+  ["Josiah Bell",     "SBF",   "Joker",     "Bowser"],
+  ["Naomi Castillo",  "KUF",   "",          ""],
+  ["Eli Ranganathan", "SBKF",  "Fox",       "Marth"],
+  ["Priya Nakamura",  "KF",    "",          ""],
+  ["Deshawn Piper",   "SKUF",  "Bowser",    "Kirby"],
+  ["Hannah Wexler",   "BU",    "",          ""],
+  ["Owen Trask",      "SKF",   "Link",      "Joker"],
+  ["Layla Osei",      "KUF",   "",          ""],
+  ["Gabriel Ruiz",    "SBUF",  "Marth",     "Sephiroth"],
+  ["Sofia Lindqvist", "KU",    "",          ""],
+  ["Andre Boateng",   "SF",    "Fox",       "Bowser"],
+  ["Ruby Kaminski",   "BKF",   "",          ""],
+  ["Tobias Fenn",     "SKUF",  "Kirby",     "Link"],
+  ["Maya Ellsworth",  "UF",    "",          ""],
+  ["Caleb Nwosu",     "SBK",   "Joker",     "Fox"],
+  ["Jonah Petrov",    "KF",    "",          ""],
+  ["Simone Adjei",    "SUF",   "Sephiroth", "Marth"],
+  ["Isaac Vermeer",   "BKU",   "",          ""],
+  ["Talia Moreau",    "F",     "",          ""],
+  ["Ezra Kowalski",   "SKF",   "Bowser",    "Link"],
+  ["Nora Beaumont",   "KUF",   "",          ""],
+  ["Malik Hargrove",  "SBF",   "Link",      "Kirby"],
+  ["Iris Tanaka",     "KU",    "",          ""],
+  ["Silas Redmond",   "SUF",   "Marth",     "Joker"],
+  ["Chloe Vasquez",   "BKF",   "",          ""],
+  ["Aaron Delacroix", "KUF",   "",          ""],
+];
+const DEMO_CODES = { S:"Super Smash Bros", B:"Brawlhalla", K:"Mario Kart", U:"Ultimate Chicken Horse", F:"Boomerang Fu" };
+
+function seedDemo(){
+  S = blankState();
+  S.people = DEMO_PEOPLE.map(([name, codes, f1, f2]) => ({
+    name,
+    games: codes.split("").map(c => DEMO_CODES[c]),
+    fighters: [f1, f2].filter(Boolean),
+  }));
+  // every tournament drawn, and the first Mario Kart heat already raced, so
+  // the standings and the points table have something real in them
+  TOURNAMENTS.forEach(t => {
+    const g = S.games[t.name];
+    const field = seededShuffle(rosterFor(S.people, t.name), g.seed);
+    if (t.mode === "bracket") g.slots = buildSlots(field);
+    else g.heats = splitHeats(field, t.cap);
+    g.drawn = true;
+  });
+  const smash = S.games["Super Smash Bros"];
+  firstRound(smash.slots).forEach((pair, k) => {
+    if (pair[0] !== BYE && pair[1] !== BYE) smash.results["0-" + k] = pair[0];
+  });
+  const kart = S.games["Mario Kart"];
+  kart.orders[0] = kart.heats[0].slice();
+  S.tab = "Super Smash Bros";
+  save();
+}
+
+function demoBanner(){
+  const bar = el("div", {
+    style:"display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px clamp(14px,3vw,26px);" +
+          "background:oklch(0.735 0.195 47 / .13);border-bottom:1px solid oklch(0.735 0.195 47 / .45);font-size:13px"
+  },
+    el("span", { class:"bang", style:"flex:none;width:19px;height:19px;border-radius:50%;background:var(--accent);color:var(--on-accent);font:800 12px/19px var(--font);text-align:center" }, "!"),
+    el("div", null, el("b", null, "This is the demo. "), "Twenty-eight made-up people, every tournament drawn. Click anything you like — none of it touches your real night."),
+    el("div", { style:"margin-left:auto;display:flex;gap:8px" },
+      el("button", { class:"btn sm ghost", onclick: () => { localStorage.removeItem(KEY); location.reload(); } }, "Start the demo again"),
+      el("button", { class:"btn sm", onclick: () => { location.hash = ""; location.reload(); } }, "Leave the demo")));
+  document.body.insertBefore(bar, $("#tabs"));
+}
+
+/* ------------------------------------------------------------------ */
+
 if (location.hash === "#check") runChecks();
-else { render(); if (S.sheetUrl) syncNow(false); }
+else if (DEMO){
+  if (!S.people.length) seedDemo();
+  $("#barsub").textContent = "DEMO — pretend people";
+  render();
+  demoBanner();
+} else { render(); if (S.sheetUrl) syncNow(false); }
 </script>
 </body>
 </html>
