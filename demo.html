@@ -60,7 +60,9 @@ body{
   font-family:var(--font); font-size:15px; line-height:1.5;
   -webkit-font-smoothing:antialiased;
   min-height:100svh;
-  overflow-x:hidden;   /* the bracket does its own sideways scrolling */
+  /* clip, NOT hidden: hidden turns the body into its own scrolling box, which
+     silently breaks every scroll-position read and write on the page. */
+  overflow-x:clip;
 }
 button{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
@@ -922,14 +924,14 @@ function renderTabs(){
   nav.textContent = "";
   nav.appendChild(el("button", {
     class:"tab", role:"tab", "aria-selected": S.tab === "everyone" ? "true" : "false",
-    onclick: () => { S.tab = "everyone"; save(); render(); }
+    onclick: () => { S.tab = "everyone"; save(); render({ toTop:true }); }
   }, el("b", null, "Everyone"), el("span", null, S.people.length + " signed up")));
 
   TOURNAMENTS.forEach(t => {
     nav.appendChild(el("button", {
       class:"tab", role:"tab", style:"--tint:" + t.c,
       "aria-selected": S.tab === t.name ? "true" : "false",
-      onclick: () => { S.tab = t.name; save(); render(); }
+      onclick: () => { S.tab = t.name; save(); render({ toTop:true }); }
     },
       el("b", null, el("i", { class:"pip", style:"font-style:normal" }), t.short),
       el("span", null, gameStatus(t))
@@ -948,7 +950,16 @@ function renderSync(){
     (S.sheetUrl && S.lastSync ? " · live " + new Date(S.lastSync).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}) : "");
 }
 
-function render(){
+/* Re-drawing the screen must not move it. Tapping a winner half way down a
+   32-slot bracket and being thrown back to the top is unusable in a loud room,
+   so the page puts you back exactly where you were — including how far across
+   the bracket you had scrolled. Only changing tab goes to the top. */
+function render(opts){
+  const toTop = !!(opts && opts.toTop);
+  const y = window.scrollY;
+  const oldBracket = document.querySelector(".bracket");
+  const x = oldBracket ? oldBracket.scrollLeft : 0;
+
   renderTabs();
   renderSync();
   const view = $("#view");
@@ -956,7 +967,14 @@ function render(){
   view.style.setProperty("--game", S.tab === "everyone" ? "var(--accent)" : tourn(S.tab).c);
   if (S.tab === "everyone") renderEveryone(view);
   else renderGame(view, tourn(S.tab));
-  window.scrollTo({ top:0, behavior:"instant" });
+
+  if (toTop){
+    window.scrollTo({ top:0, behavior:"instant" });
+  } else {
+    window.scrollTo({ top:y, behavior:"instant" });
+    const b = document.querySelector(".bracket");
+    if (b) b.scrollLeft = x;
+  }
 }
 
 /* ---------------- everyone ---------------- */
@@ -1616,9 +1634,12 @@ function seedDemo(){
     else g.heats = splitHeats(field, t.cap);
     g.drawn = true;
   });
+  // Only the first two matches are played. The rest of round one is left for
+  // you to tap — a demo where everything is already decided shows you nothing.
   const smash = S.games["Super Smash Bros"];
+  let played = 0;
   firstRound(smash.slots).forEach((pair, k) => {
-    if (pair[0] !== BYE && pair[1] !== BYE) smash.results["0-" + k] = pair[0];
+    if (played < 2 && pair[0] !== BYE && pair[1] !== BYE){ smash.results["0-" + k] = pair[0]; played++; }
   });
   const kart = S.games["Mario Kart"];
   kart.orders[0] = kart.heats[0].slice();
